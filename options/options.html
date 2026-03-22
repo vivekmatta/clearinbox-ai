@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClearInbox AI — Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="options-container">
+    <header>
+      <h1>ClearInbox AI</h1>
+      <p class="subtitle">Settings</p>
+    </header>
+
+    <section class="card">
+      <h2>Gemini API Key</h2>
+      <p class="help-text">
+        Get your free API key from
+        <a href="https://aistudio.google.com/apikey" target="_blank">Google AI Studio</a>.
+        Free tier: 1,000 requests/day.
+      </p>
+      <div class="input-group">
+        <input type="password" id="apiKey" placeholder="Enter your Gemini API key" autocomplete="off">
+        <button id="toggleKey" class="btn-icon" title="Show/hide key">
+          <span id="eyeIcon">👁</span>
+        </button>
+      </div>
+      <button id="saveKey" class="btn-primary">Save Key</button>
+      <div id="keyStatus" class="status"></div>
+    </section>
+
+    <section class="card">
+      <h2>API Usage Today</h2>
+      <div class="usage-bar">
+        <div id="usageProgress" class="usage-progress" style="width: 0%"></div>
+      </div>
+      <p id="usageText" class="usage-text">0 / 1,000 calls used</p>
+      <p id="usageWarning" class="usage-warning hidden">Warning: Approaching daily limit</p>
+    </section>
+
+    <section class="card">
+      <h2>Account</h2>
+      <p id="accountInfo" class="help-text">Not signed in</p>
+      <button id="signOut" class="btn-secondary">Sign Out</button>
+    </section>
+  </div>
+
+  <script src="options.js" type="module"></script>
+</body>
+</html>

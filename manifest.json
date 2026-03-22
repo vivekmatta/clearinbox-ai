@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "ClearInbox AI",
+  "version": "1.0.0",
+  "description": "AI-powered Gmail triage — classifies, prioritizes, and surfaces only important emails",
+  "permissions": [
+    "identity",
+    "storage",
+    "alarms"
+  ],
+  "oauth2": {
+    "client_id": "YOUR_CLIENT_ID.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/gmail.readonly",
+      "https://www.googleapis.com/auth/userinfo.email"
+    ]
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "assets/icon16.png",
+      "48": "assets/icon48.png",
+      "128": "assets/icon128.png"
+    }
+  },
+  "options_page": "options/options.html",
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "icons": {
+    "16": "assets/icon16.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  },
+  "minimum_chrome_version": "116"
+}

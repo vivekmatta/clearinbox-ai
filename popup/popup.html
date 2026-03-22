@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ClearInbox AI</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Auth Screen -->
+    <div id="authScreen" class="screen">
+      <div class="auth-content">
+        <div class="logo">
+          <div class="logo-icon">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+              <rect x="4" y="4" width="40" height="40" rx="10" fill="#6366F1"/>
+              <path d="M12 18L24 26L36 18" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <rect x="12" y="18" width="24" height="16" rx="2" stroke="white" stroke-width="2" fill="none"/>
+              <circle cx="36" cy="16" r="6" fill="#F59E0B"/>
+              <text x="36" y="19" text-anchor="middle" fill="white" font-size="7" font-weight="bold" font-family="system-ui">AI</text>
+            </svg>
+          </div>
+          <h1>ClearInbox AI</h1>
+          <p class="tagline">AI-powered email triage</p>
+        </div>
+        <button id="signInBtn" class="btn-signin">
+          <svg width="18" height="18" viewBox="0 0 18 18"><path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/><path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/></svg>
+          Sign in with Google
+        </button>
+        <p class="auth-note">Read-only access to classify your emails</p>
+      </div>
+    </div>
+
+    <!-- Main Screen -->
+    <div id="mainScreen" class="screen hidden">
+      <!-- Header -->
+      <header class="header">
+        <div class="header-left">
+          <h1 class="header-title">ClearInbox</h1>
+          <span id="userEmail" class="user-email"></span>
+        </div>
+        <div class="header-actions">
+          <button id="refreshBtn" class="btn-icon" title="Refresh">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M14 8A6 6 0 11 3.5 3.5" stroke-linecap="round"/>
+              <path d="M14 3v5h-5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <button id="settingsBtn" class="btn-icon" title="Settings">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="8" cy="8" r="2"/>
+              <path d="M13.5 8a5.5 5.5 0 01-.3 1.8l1.5 1.2-1 1.7-1.8-.5a5.5 5.5 0 01-1.6.9L10 15H8l-.3-1.9a5.5 5.5 0 01-1.6-.9l-1.8.5-1-1.7 1.5-1.2A5.5 5.5 0 014.5 8a5.5 5.5 0 01.3-1.8L3.3 5 4.3 3.3l1.8.5a5.5 5.5 0 011.6-.9L8 1h2l.3 1.9a5.5 5.5 0 011.6.9l1.8-.5 1 1.7-1.5 1.2a5.5 5.5 0 01.3 1.8z"/>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Tab Navigation -->
+      <nav class="tabs">
+        <button class="tab active" data-tab="priority">Priority</button>
+        <button class="tab" data-tab="all">All</button>
+        <button class="tab" data-tab="digest">Digest</button>
+        <button class="tab" data-tab="unsub">Unsub</button>
+        <button class="tab" data-tab="costs">$</button>
+      </nav>
+
+      <!-- Tab Content -->
+      <div class="tab-content">
+        <!-- Priority Tab -->
+        <div id="tab-priority" class="tab-panel active">
+          <div id="priorityList" class="email-list">
+            <div class="empty-state">
+              <p>Click refresh to load emails</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- All Tab -->
+        <div id="tab-all" class="tab-panel">
+          <div id="allList" class="email-list"></div>
+        </div>
+
+        <!-- Digest Tab -->
+        <div id="tab-digest" class="tab-panel">
+          <div id="digestContent" class="digest"></div>
+        </div>
+
+        <!-- Unsub Tab -->
+        <div id="tab-unsub" class="tab-panel">
+          <div id="unsubList" class="email-list"></div>
+        </div>
+
+        <!-- Costs Tab -->
+        <div id="tab-costs" class="tab-panel">
+          <div id="costsList" class="costs"></div>
+        </div>
+      </div>
+
+      <!-- Loading Overlay -->
+      <div id="loadingOverlay" class="loading-overlay hidden">
+        <div class="spinner"></div>
+        <p id="loadingText">Loading emails...</p>
+      </div>
+
+      <!-- Error Bar -->
+      <div id="errorBar" class="error-bar hidden">
+        <span id="errorText"></span>
+        <button id="errorDismiss" class="btn-dismiss">&times;</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js" type="module"></script>
+</body>
+</html>
