@@ -15,9 +15,14 @@ const errorDismiss = document.getElementById('errorDismiss');
 
 // State
 let currentData = null;
+let dismissedUnsubs = new Set();
 
 // Initialize
 async function init() {
+  // Load dismissed unsubs
+  const saved = await storage.get('dismissedUnsubs');
+  if (saved) dismissedUnsubs = new Set(saved);
+
   try {
     const response = await chrome.runtime.sendMessage({ type: 'getUserInfo' });
     if (response?.email) {
@@ -147,20 +152,21 @@ async function fetchEmails() {
 // Rendering
 function renderAll() {
   if (!currentData) return;
+  renderDigestTab();
   renderPriorityTab();
   renderAllTab();
-  renderDigestTab();
   renderUnsubTab();
   renderCostsTab();
+  attachCardListeners();
 }
 
 // Category config
 const CATEGORIES = {
   urgent: { label: 'Urgent', color: '#ef4444', bg: '#fef2f2', icon: '!!' },
-  needs_reply: { label: 'Reply', color: '#f59e0b', bg: '#fffbeb', icon: '↩' },
+  needs_reply: { label: 'Reply', color: '#f59e0b', bg: '#fffbeb', icon: '\u21a9' },
   fyi: { label: 'FYI', color: '#3b82f6', bg: '#eff6ff', icon: 'i' },
-  newsletter: { label: 'News', color: '#8b5cf6', bg: '#f5f3ff', icon: '📰' },
-  spam: { label: 'Spam', color: '#6b7280', bg: '#f9fafb', icon: '🚫' }
+  newsletter: { label: 'News', color: '#8b5cf6', bg: '#f5f3ff', icon: '\ud83d\udcf0' },
+  spam: { label: 'Spam', color: '#6b7280', bg: '#f9fafb', icon: '\ud83d\udeab' }
 };
 
 function renderPriorityTab() {
@@ -177,14 +183,14 @@ function renderPriorityTab() {
   if (!priority.length) {
     container.innerHTML = `
       <div class="empty-state">
-        <div class="empty-icon">✨</div>
+        <div class="empty-icon">\u2728</div>
         <p class="empty-title">All clear!</p>
         <p>No urgent emails need your attention</p>
       </div>`;
     return;
   }
 
-  container.innerHTML = priority.map(email => renderEmailCard(email, classifications[email.id], true)).join('');
+  container.innerHTML = priority.map(email => renderEmailCard(email, classifications[email.id])).join('');
 }
 
 function renderAllTab() {
@@ -203,21 +209,54 @@ function renderAllTab() {
 
   container.innerHTML = order
     .filter(cat => groups[cat]?.length)
-    .map(cat => `
-      <div class="category-group">
-        <div class="category-header">
-          <span class="category-badge" style="background:${CATEGORIES[cat].bg};color:${CATEGORIES[cat].color}">
-            ${CATEGORIES[cat].label}
-          </span>
-          <span class="category-count">${groups[cat].length}</span>
-        </div>
-        ${groups[cat].map(email => renderEmailCard(email, classifications[email.id], false)).join('')}
-      </div>
-    `).join('');
+    .map(cat => {
+      // Group emails by sender within each category
+      const senderGroups = {};
+      for (const email of groups[cat]) {
+        const senderKey = extractEmail(email.from).toLowerCase();
+        if (!senderGroups[senderKey]) senderGroups[senderKey] = [];
+        senderGroups[senderKey].push(email);
+      }
+
+      const senderEntries = Object.values(senderGroups);
+      const cardsHtml = senderEntries.map(senderEmails => {
+        if (senderEmails.length === 1) {
+          return renderEmailCard(senderEmails[0], classifications[senderEmails[0].id]);
+        }
+        // Stacked sender group
+        const first = senderEmails[0];
+        const from = extractName(first.from);
+        return `
+          <div class="sender-stack" data-expanded="false">
+            <div class="sender-stack-header">
+              <span class="category-badge small" style="background:${CATEGORIES[cat].bg};color:${CATEGORIES[cat].color}">
+                ${CATEGORIES[cat].label}
+              </span>
+              <span class="sender-stack-name">${escapeHtml(from)}</span>
+              <span class="sender-stack-count">${senderEmails.length}</span>
+              <span class="sender-stack-chevron">\u203a</span>
+            </div>
+            <div class="sender-stack-emails">
+              ${senderEmails.map(email => renderEmailCard(email, classifications[email.id])).join('')}
+            </div>
+          </div>`;
+      }).join('');
+
+      return `
+        <div class="category-group">
+          <div class="category-header">
+            <span class="category-badge" style="background:${CATEGORIES[cat].bg};color:${CATEGORIES[cat].color}">
+              ${CATEGORIES[cat].label}
+            </span>
+            <span class="category-count">${groups[cat].length}</span>
+          </div>
+          ${cardsHtml}
+        </div>`;
+    }).join('');
 }
 
 function renderDigestTab() {
-  const { emails, classifications } = currentData;
+  const { emails, classifications, aiSummary } = currentData;
 
   const counts = { urgent: 0, needs_reply: 0, fyi: 0, newsletter: 0, spam: 0 };
   for (const email of emails) {
@@ -227,14 +266,29 @@ function renderDigestTab() {
 
   const attention = counts.urgent + counts.needs_reply;
 
-  document.getElementById('digestContent').innerHTML = `
-    <div class="digest-hero">
-      <div class="digest-number">${emails.length}</div>
-      <div class="digest-label">emails scanned</div>
+  // AI Summary section
+  const summaryHtml = aiSummary ? `
+    <div class="digest-ai-section">
+      <div class="digest-ai-headline">${escapeHtml(aiSummary.headline || 'Your Inbox Summary')}</div>
+      <div class="digest-ai-bullets">
+        ${(aiSummary.bullets || aiSummary.summary_bullets || []).map(bullet => `
+          <div class="digest-ai-bullet">${escapeHtml(bullet)}</div>
+        `).join('')}
+      </div>
     </div>
-    <div class="digest-highlight">
-      <span class="digest-attention">${attention}</span>
-      need your attention
+  ` : '';
+
+  document.getElementById('digestContent').innerHTML = `
+    ${summaryHtml}
+    <div class="digest-stats-row">
+      <div class="digest-stat-box">
+        <div class="digest-stat-number">${emails.length}</div>
+        <div class="digest-stat-label">scanned</div>
+      </div>
+      <div class="digest-stat-box digest-stat-attention">
+        <div class="digest-stat-number">${attention}</div>
+        <div class="digest-stat-label">need action</div>
+      </div>
     </div>
     <div class="digest-breakdown">
       ${Object.entries(counts)
@@ -257,7 +311,22 @@ function renderUnsubTab() {
 
   const unsubEmails = emails.filter(e => unsubscribe[e.id]);
 
-  if (!unsubEmails.length) {
+  // Deduplicate by sender email
+  const senderMap = {};
+  for (const email of unsubEmails) {
+    const unsub = unsubscribe[email.id];
+    const key = unsub.senderEmail.toLowerCase();
+    if (dismissedUnsubs.has(key)) continue;
+    if (!senderMap[key]) {
+      senderMap[key] = { ...unsub, count: 1 };
+    } else {
+      senderMap[key].count++;
+    }
+  }
+
+  const uniqueSenders = Object.values(senderMap);
+
+  if (!uniqueSenders.length) {
     container.innerHTML = `
       <div class="empty-state">
         <p class="empty-title">No newsletters detected</p>
@@ -266,19 +335,69 @@ function renderUnsubTab() {
     return;
   }
 
-  container.innerHTML = unsubEmails.map(email => {
-    const unsub = unsubscribe[email.id];
+  container.innerHTML = uniqueSenders.map(unsub => {
+    const key = unsub.senderEmail.toLowerCase();
     return `
-      <div class="unsub-card">
+      <div class="unsub-card" data-sender="${escapeHtml(key)}">
         <div class="unsub-info">
-          <div class="unsub-sender">${escapeHtml(unsub.senderName)}</div>
+          <div class="unsub-sender">
+            ${escapeHtml(unsub.senderName)}
+            ${unsub.count > 1 ? `<span class="unsub-count">${unsub.count}</span>` : ''}
+          </div>
           <div class="unsub-email">${escapeHtml(unsub.senderEmail)}</div>
         </div>
-        <a href="${escapeHtml(unsub.url)}" target="_blank" class="btn-unsub" title="Opens unsubscribe page in new tab">
-          Unsubscribe
-        </a>
+        <div class="unsub-actions">
+          <a href="${escapeHtml(unsub.url)}" target="_blank" class="btn-unsub" data-sender="${escapeHtml(key)}" title="Opens unsubscribe page in new tab">
+            Unsubscribe
+          </a>
+        </div>
       </div>`;
   }).join('');
+
+  // Attach unsub click handlers
+  container.querySelectorAll('.btn-unsub').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const card = btn.closest('.unsub-card');
+      const actions = card.querySelector('.unsub-actions');
+      const senderKey = btn.dataset.sender;
+
+      // After clicking, show confirmation
+      setTimeout(() => {
+        actions.innerHTML = `
+          <div class="unsub-confirm">
+            <span class="unsub-confirm-text">Unsubscribed?</span>
+            <button class="btn-unsub-yes" data-sender="${escapeHtml(senderKey)}">Yes</button>
+            <button class="btn-unsub-no" data-sender="${escapeHtml(senderKey)}">No</button>
+          </div>`;
+
+        actions.querySelector('.btn-unsub-yes').addEventListener('click', async () => {
+          dismissedUnsubs.add(senderKey);
+          await storage.set('dismissedUnsubs', [...dismissedUnsubs]);
+          card.style.animation = 'cardOut 0.2s ease-out forwards';
+          setTimeout(() => {
+            card.remove();
+            // Check if empty
+            if (!container.querySelector('.unsub-card')) {
+              container.innerHTML = `
+                <div class="empty-state">
+                  <p class="empty-title">All cleaned up!</p>
+                  <p>No more newsletters to unsubscribe from</p>
+                </div>`;
+            }
+          }, 200);
+        });
+
+        actions.querySelector('.btn-unsub-no').addEventListener('click', () => {
+          actions.innerHTML = `
+            <a href="${escapeHtml(card.querySelector('.unsub-email')?.textContent || '')}" target="_blank" class="btn-unsub" data-sender="${escapeHtml(senderKey)}" title="Opens unsubscribe page in new tab">
+              Unsubscribe
+            </a>`;
+          // Re-attach the unsub url from original data
+          renderUnsubTab();
+        });
+      }, 500);
+    });
+  });
 }
 
 function renderCostsTab() {
@@ -314,28 +433,69 @@ function renderCostsTab() {
     </div>`;
 }
 
-function renderEmailCard(email, classification, detailed) {
+function renderEmailCard(email, classification) {
   const cat = classification?.category || 'fyi';
   const catConfig = CATEGORIES[cat];
   const from = extractName(email.from);
   const timeAgo = formatTimeAgo(email.date);
+  const gmailUrl = `https://mail.google.com/mail/u/0/#inbox/${email.id}`;
 
   return `
-    <div class="email-card">
+    <div class="email-card" data-email-id="${email.id}">
       <div class="email-header">
         <span class="category-badge small" style="background:${catConfig.bg};color:${catConfig.color}">
           ${catConfig.label}
         </span>
-        <span class="importance" title="Importance: ${classification?.importance || 5}/10">
-          ${'●'.repeat(Math.ceil((classification?.importance || 5) / 2))}${'○'.repeat(5 - Math.ceil((classification?.importance || 5) / 2))}
-        </span>
+        <div class="email-header-right">
+          <span class="importance" title="Importance: ${classification?.importance || 5}/10">
+            ${'\u25cf'.repeat(Math.ceil((classification?.importance || 5) / 2))}${'\u25cb'.repeat(5 - Math.ceil((classification?.importance || 5) / 2))}
+          </span>
+          <span class="card-chevron">\u203a</span>
+        </div>
       </div>
       <div class="email-from">${escapeHtml(from)}</div>
       <div class="email-subject">${escapeHtml(email.subject || '(no subject)')}</div>
-      ${detailed && classification?.summary ? `<div class="email-summary">${escapeHtml(classification.summary)}</div>` : ''}
-      ${detailed && classification?.action_required ? `<div class="email-action">→ ${escapeHtml(classification.action_description || 'Action needed')}</div>` : ''}
       <div class="email-time">${escapeHtml(timeAgo)}</div>
+      <div class="email-expand">
+        ${classification?.summary ? `<div class="email-summary">${escapeHtml(classification.summary)}</div>` : ''}
+        ${classification?.action_required ? `<div class="email-action">\u2192 ${escapeHtml(classification.action_description || 'Action needed')}</div>` : ''}
+        <a href="${gmailUrl}" target="_blank" class="btn-gmail" onclick="event.stopPropagation()">Open in Gmail \u2197</a>
+      </div>
     </div>`;
+}
+
+// Attach click listeners for expandable cards and sender stacks
+function attachCardListeners() {
+  // Email card expand/collapse
+  document.querySelectorAll('.email-card').forEach(card => {
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.btn-gmail')) return;
+      card.classList.toggle('expanded');
+    });
+  });
+
+  // Sender stack expand/collapse
+  document.querySelectorAll('.sender-stack-header').forEach(header => {
+    header.addEventListener('click', () => {
+      const stack = header.closest('.sender-stack');
+      const expanded = stack.dataset.expanded === 'true';
+      stack.dataset.expanded = expanded ? 'false' : 'true';
+    });
+
+    // After expanding a sender stack, attach card listeners to new cards
+    header.addEventListener('click', () => {
+      const stack = header.closest('.sender-stack');
+      stack.querySelectorAll('.email-card').forEach(card => {
+        if (!card.dataset.listenerAttached) {
+          card.addEventListener('click', (e) => {
+            if (e.target.closest('.btn-gmail')) return;
+            card.classList.toggle('expanded');
+          });
+          card.dataset.listenerAttached = 'true';
+        }
+      });
+    });
+  });
 }
 
 // Helpers
@@ -343,6 +503,12 @@ function extractName(from) {
   if (!from) return 'Unknown';
   const match = from.match(/^"?([^"<]+)"?\s*</);
   return match ? match[1].trim() : from.split('@')[0];
+}
+
+function extractEmail(from) {
+  if (!from) return '';
+  const match = from.match(/<([^>]+)>/);
+  return match ? match[1] : from;
 }
 
 function formatTimeAgo(dateStr) {

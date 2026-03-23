@@ -1,6 +1,10 @@
 // Background service worker — auth, email fetch orchestration, alarms
 
 import * as storage from '../lib/storage.js';
+import { listMessages, getMessages } from '../lib/gmail-api.js';
+import { classifyEmails, generateSummary } from '../lib/classifier.js';
+import { detectUnsubscribe } from '../lib/unsubscribe-detector.js';
+import { scanSubscriptions } from '../lib/subscription-scanner.js';
 
 // Handle messages from popup/options
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -70,42 +74,92 @@ async function signOut() {
   });
 }
 
-async function fetchAndClassifyEmails() {
-  const { listMessages, getMessages } = await import('../lib/gmail-api.js');
-  const { classifyEmails } = await import('../lib/classifier.js');
-  const { detectUnsubscribe } = await import('../lib/unsubscribe-detector.js');
-  const { scanSubscriptions } = await import('../lib/subscription-scanner.js');
+const DAILY_BUDGET = 18;
 
+async function fetchAndClassifyEmails() {
   const token = await getAuthToken(false);
 
-  // Fetch last 50 emails from the past 3 days
-  const messageIds = await listMessages(token, { maxResults: 50, query: 'newer_than:3d' });
+  // Two-pass fetch: primary inbox + sample of promotions for Unsub/Costs
+  const primaryIds = await listMessages(token, {
+    maxResults: 30,
+    query: 'category:primary newer_than:3d'
+  });
+  const promoIds = await listMessages(token, {
+    maxResults: 15,
+    query: '(category:promotions OR category:updates OR category:social) newer_than:3d'
+  });
 
-  if (!messageIds.length) {
-    return { emails: [], classifications: {}, unsubscribe: {}, subscriptions: [] };
+  // Deduplicate
+  const seen = new Set();
+  const allIds = [];
+  for (const id of [...primaryIds, ...promoIds]) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      allIds.push(id);
+    }
+  }
+
+  if (!allIds.length) {
+    return { emails: [], classifications: {}, unsubscribe: {}, subscriptions: [], aiSummary: null };
   }
 
   // Batch get all message details
-  const emails = await getMessages(token, messageIds);
+  const emails = await getMessages(token, allIds);
 
   // Check cache for existing classifications
-  const cached = await storage.getBatchClassifications(messageIds);
+  const cached = await storage.getBatchClassifications(allIds);
   const uncachedEmails = emails.filter(e => !cached[e.id]);
 
-  // Classify uncached emails
-  let newClassifications = {};
-  if (uncachedEmails.length > 0) {
-    const apiKey = await storage.get('gemini_api_key');
-    if (apiKey) {
-      newClassifications = await classifyEmails(apiKey, uncachedEmails);
-      // Cache new classifications
-      for (const [id, classification] of Object.entries(newClassifications)) {
+  // Pre-classify obvious promotions/social locally (no API call)
+  const preClassified = {};
+  const needsAI = [];
+  for (const email of uncachedEmails) {
+    const labels = email.labelIds || [];
+    if (labels.includes('CATEGORY_PROMOTIONS') || labels.includes('CATEGORY_SOCIAL')) {
+      preClassified[email.id] = {
+        category: 'newsletter',
+        importance: 2,
+        summary: email.subject || 'Newsletter',
+        action_required: false,
+        action_description: null
+      };
+    } else {
+      needsAI.push(email);
+    }
+  }
+
+  // Cache pre-classified emails
+  for (const [id, classification] of Object.entries(preClassified)) {
+    await storage.setClassification(id, classification);
+  }
+
+  // Classify remaining emails with AI (budget check)
+  let aiClassifications = {};
+  const apiKey = await storage.get('gemini_api_key');
+  if (needsAI.length > 0 && apiKey) {
+    const { count } = await storage.getApiCallCount();
+    if (count < DAILY_BUDGET) {
+      aiClassifications = await classifyEmails(apiKey, needsAI);
+      for (const [id, classification] of Object.entries(aiClassifications)) {
         await storage.setClassification(id, classification);
       }
     }
   }
 
-  const classifications = { ...cached, ...newClassifications };
+  const classifications = { ...cached, ...preClassified, ...aiClassifications };
+
+  // Generate AI summary
+  let aiSummary = null;
+  if (apiKey) {
+    const { count } = await storage.getApiCallCount();
+    if (count < DAILY_BUDGET) {
+      try {
+        aiSummary = await generateSummary(apiKey, emails, classifications);
+      } catch (e) {
+        aiSummary = null;
+      }
+    }
+  }
 
   // Detect unsubscribe links
   const unsubscribe = {};
@@ -125,14 +179,15 @@ async function fetchAndClassifyEmails() {
     emails,
     classifications,
     unsubscribe,
-    subscriptions
+    subscriptions,
+    aiSummary
   });
 
-  return { emails, classifications, unsubscribe, subscriptions };
+  return { emails, classifications, unsubscribe, subscriptions, aiSummary };
 }
 
 // Set up hourly alarm for background refresh
-chrome.alarms.create('refreshEmails', { periodInMinutes: 60 });
+chrome.alarms.create('refreshEmails', { periodInMinutes: 180 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === 'refreshEmails') {
