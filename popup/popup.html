@@ -59,10 +59,9 @@
       <!-- Tab Navigation -->
       <nav class="tabs">
         <button class="tab active" data-tab="digest">Digest</button>
-        <button class="tab" data-tab="priority">Priority</button>
-        <button class="tab" data-tab="all">All</button>
+        <button class="tab" data-tab="inbox">Inbox</button>
         <button class="tab" data-tab="unsub">Unsub</button>
-        <button class="tab" data-tab="costs">$</button>
+        <button class="tab" data-tab="jobs">Jobs</button>
       </nav>
 
       <!-- Tab Content -->
@@ -72,18 +71,9 @@
           <div id="digestContent" class="digest"></div>
         </div>
 
-        <!-- Priority Tab -->
-        <div id="tab-priority" class="tab-panel">
-          <div id="priorityList" class="email-list">
-            <div class="empty-state">
-              <p>Click refresh to load emails</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- All Tab -->
-        <div id="tab-all" class="tab-panel">
-          <div id="allList" class="email-list"></div>
+        <!-- Inbox Tab -->
+        <div id="tab-inbox" class="tab-panel">
+          <div id="inboxList" class="email-list"></div>
         </div>
 
         <!-- Unsub Tab -->
@@ -91,9 +81,9 @@
           <div id="unsubList" class="email-list"></div>
         </div>
 
-        <!-- Costs Tab -->
-        <div id="tab-costs" class="tab-panel">
-          <div id="costsList" class="costs"></div>
+        <!-- Jobs Tab -->
+        <div id="tab-jobs" class="tab-panel">
+          <div id="jobsList" class="jobs"></div>
         </div>
       </div>
 

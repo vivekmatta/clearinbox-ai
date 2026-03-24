@@ -153,10 +153,9 @@ async function fetchEmails() {
 function renderAll() {
   if (!currentData) return;
   renderDigestTab();
-  renderPriorityTab();
-  renderAllTab();
+  renderInboxTab();
   renderUnsubTab();
-  renderCostsTab();
+  renderJobsTab();
   attachCardListeners();
 }
 
@@ -169,90 +168,31 @@ const CATEGORIES = {
   spam: { label: 'Spam', color: '#6b7280', bg: '#f9fafb', icon: '\ud83d\udeab' }
 };
 
-function renderPriorityTab() {
-  const { emails, classifications } = currentData;
-  const priority = emails
+function renderInboxTab() {
+  const { emails, classifications, jobs } = currentData;
+
+  const jobEmailIds = new Set((jobs || []).map(j => j.emailId));
+
+  const important = emails
     .filter(e => {
-      const c = classifications[e.id];
-      return c && (c.category === 'urgent' || c.category === 'needs_reply');
+      const cat = classifications[e.id]?.category;
+      return (cat === 'urgent' || cat === 'needs_reply' || cat === 'fyi') && !jobEmailIds.has(e.id);
     })
     .sort((a, b) => (classifications[b.id]?.importance || 0) - (classifications[a.id]?.importance || 0));
 
-  const container = document.getElementById('priorityList');
+  const container = document.getElementById('inboxList');
 
-  if (!priority.length) {
+  if (!important.length) {
     container.innerHTML = `
       <div class="empty-state">
         <div class="empty-icon">\u2728</div>
         <p class="empty-title">All clear!</p>
-        <p>No urgent emails need your attention</p>
+        <p>No important emails found</p>
       </div>`;
     return;
   }
 
-  container.innerHTML = priority.map(email => renderEmailCard(email, classifications[email.id])).join('');
-}
-
-function renderAllTab() {
-  const { emails, classifications } = currentData;
-
-  // Group by category
-  const groups = {};
-  for (const email of emails) {
-    const cat = classifications[email.id]?.category || 'fyi';
-    if (!groups[cat]) groups[cat] = [];
-    groups[cat].push(email);
-  }
-
-  const container = document.getElementById('allList');
-  const order = ['urgent', 'needs_reply', 'fyi', 'newsletter', 'spam'];
-
-  container.innerHTML = order
-    .filter(cat => groups[cat]?.length)
-    .map(cat => {
-      // Group emails by sender within each category
-      const senderGroups = {};
-      for (const email of groups[cat]) {
-        const senderKey = extractEmail(email.from).toLowerCase();
-        if (!senderGroups[senderKey]) senderGroups[senderKey] = [];
-        senderGroups[senderKey].push(email);
-      }
-
-      const senderEntries = Object.values(senderGroups);
-      const cardsHtml = senderEntries.map(senderEmails => {
-        if (senderEmails.length === 1) {
-          return renderEmailCard(senderEmails[0], classifications[senderEmails[0].id]);
-        }
-        // Stacked sender group
-        const first = senderEmails[0];
-        const from = extractName(first.from);
-        return `
-          <div class="sender-stack" data-expanded="false">
-            <div class="sender-stack-header">
-              <span class="category-badge small" style="background:${CATEGORIES[cat].bg};color:${CATEGORIES[cat].color}">
-                ${CATEGORIES[cat].label}
-              </span>
-              <span class="sender-stack-name">${escapeHtml(from)}</span>
-              <span class="sender-stack-count">${senderEmails.length}</span>
-              <span class="sender-stack-chevron">\u203a</span>
-            </div>
-            <div class="sender-stack-emails">
-              ${senderEmails.map(email => renderEmailCard(email, classifications[email.id])).join('')}
-            </div>
-          </div>`;
-      }).join('');
-
-      return `
-        <div class="category-group">
-          <div class="category-header">
-            <span class="category-badge" style="background:${CATEGORIES[cat].bg};color:${CATEGORIES[cat].color}">
-              ${CATEGORIES[cat].label}
-            </span>
-            <span class="category-count">${groups[cat].length}</span>
-          </div>
-          ${cardsHtml}
-        </div>`;
-    }).join('');
+  container.innerHTML = important.map(email => renderEmailCard(email, classifications[email.id])).join('');
 }
 
 function renderDigestTab() {
@@ -400,34 +340,38 @@ function renderUnsubTab() {
   });
 }
 
-function renderCostsTab() {
-  const { subscriptions } = currentData;
-  const container = document.getElementById('costsList');
+function renderJobsTab() {
+  const jobs = currentData.jobs || [];
+  const container = document.getElementById('jobsList');
 
-  if (!subscriptions?.length) {
+  if (!jobs.length) {
     container.innerHTML = `
       <div class="empty-state">
-        <p class="empty-title">No subscriptions detected</p>
-        <p>Receipt and payment emails will be scanned</p>
+        <p class="empty-title">No job applications detected</p>
+        <p>Application confirmations, interview invites, and offer letters will appear here</p>
       </div>`;
     return;
   }
 
-  const totalMonthly = subscriptions.reduce((sum, s) => sum + s.monthlyCost, 0);
+  const STATUS_LABEL = {
+    offered: 'Offered',
+    interview: 'Interview',
+    screening: 'Assessment',
+    applied: 'Applied',
+    rejected: 'Rejected'
+  };
 
   container.innerHTML = `
-    <div class="costs-total">
-      <div class="costs-amount">$${totalMonthly.toFixed(2)}</div>
-      <div class="costs-label">estimated monthly</div>
-    </div>
-    <div class="costs-table">
-      ${subscriptions.map(sub => `
-        <div class="cost-row">
-          <div class="cost-service">${escapeHtml(sub.service)}</div>
-          <div class="cost-details">
-            <span class="cost-amount">$${sub.amount.toFixed(2)}</span>
-            <span class="cost-freq">${sub.frequency}</span>
+    <div class="jobs-summary">${jobs.length} application${jobs.length !== 1 ? 's' : ''} tracked</div>
+    <div class="jobs-list">
+      ${jobs.map(job => `
+        <div class="job-row">
+          <span class="job-status-badge ${escapeHtml(job.status)}">${escapeHtml(STATUS_LABEL[job.status] || job.status)}</span>
+          <div class="job-info">
+            <span class="job-company ${job.status === 'rejected' ? 'job-rejected' : ''}">${escapeHtml(job.company)}</span>
+            ${job.jobTitle ? `<span class="job-title">${escapeHtml(job.jobTitle)}</span>` : ''}
           </div>
+          <span class="job-date">${escapeHtml(formatTimeAgo(job.date))}</span>
         </div>
       `).join('')}
     </div>`;
@@ -459,7 +403,7 @@ function renderEmailCard(email, classification) {
       <div class="email-expand">
         ${classification?.summary ? `<div class="email-summary">${escapeHtml(classification.summary)}</div>` : ''}
         ${classification?.action_required ? `<div class="email-action">\u2192 ${escapeHtml(classification.action_description || 'Action needed')}</div>` : ''}
-        <a href="${gmailUrl}" target="_blank" class="btn-gmail" onclick="event.stopPropagation()">Open in Gmail \u2197</a>
+        <a href="${gmailUrl}" target="_blank" class="btn-gmail">Open in Gmail \u2197</a>
       </div>
     </div>`;
 }

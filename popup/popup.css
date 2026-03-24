@@ -386,6 +386,10 @@ body {
   gap: var(--space-3);
 }
 
+#inboxList {
+  gap: var(--space-4);
+}
+
 .email-card {
   background: var(--surface-2);
   border: 1px solid var(--glass-border);
@@ -605,7 +609,7 @@ body {
 }
 
 .digest-ai-headline {
-  font-size: 15px;
+  font-size: 19px;
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.3px;
@@ -619,9 +623,9 @@ body {
 }
 
 .digest-ai-bullet {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text-secondary);
-  line-height: 1.5;
+  line-height: 1.6;
   padding-left: var(--space-3);
   position: relative;
 }
@@ -870,6 +874,114 @@ body {
   font-family: 'JetBrains Mono', monospace;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+/* ══════════════════════════════════════
+   JOBS TAB
+   ══════════════════════════════════════ */
+
+.jobs {
+  padding: var(--space-4) 0;
+}
+
+.jobs-summary {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--space-4);
+}
+
+.jobs-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.job-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-2);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-m);
+}
+
+.job-status-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.3px;
+  min-width: 72px;
+  text-align: center;
+}
+
+.job-status-badge.offered {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.job-status-badge.interview {
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--accent-bright);
+}
+
+.job-status-badge.screening {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+.job-status-badge.applied {
+  background: var(--glass);
+  color: var(--text-secondary);
+}
+
+.job-status-badge.rejected {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--glass-border);
+}
+
+.job-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.job-company {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.job-company.job-rejected {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--text-muted);
+}
+
+.job-title {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.job-date {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  font-family: 'JetBrains Mono', monospace;
 }
 
 /* ══════════════════════════════════════

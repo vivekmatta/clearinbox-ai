@@ -7,7 +7,7 @@ AI-powered Gmail triage Chrome Extension that classifies, prioritizes, and surfa
 - Chrome Extension Manifest V3
 - Vanilla JS with ES modules (no frameworks, no build tools, no npm)
 - Google Gmail API (OAuth2, readonly scope)
-- Google Gemini 2.5 Flash Lite API (free tier: 20 req/day)
+- Google Gemini 2.5 Flash Lite API (free tier: **20 req/day**)
 - chrome.storage.local for caching
 
 ## File Structure
@@ -15,7 +15,7 @@ AI-powered Gmail triage Chrome Extension that classifies, prioritizes, and surfa
 clearinbox-ai/
 ├── manifest.json           # Manifest V3 config, OAuth2, permissions
 ├── popup/
-│   ├── popup.html          # Main popup UI (5 tabs: Digest, Priority, All, Unsub, $)
+│   ├── popup.html          # Main popup UI (4 tabs: Digest, Inbox, Unsub, Jobs)
 │   ├── popup.css           # Dark obsidian theme styling
 │   └── popup.js            # UI controller, expandable cards, unsub flow
 ├── background/
@@ -26,6 +26,7 @@ clearinbox-ai/
 │   ├── classifier.js       # Strict batch classification + AI summary generation
 │   ├── unsubscribe-detector.js  # RFC 2369 + regex unsub link detection
 │   ├── subscription-scanner.js  # Receipt/payment pattern matching
+│   ├── job-tracker.js      # Job application detector (zero API calls, pattern matching)
 │   └── storage.js          # chrome.storage abstraction + TTL caching
 ├── options/
 │   ├── options.html        # Settings page (API key, usage, account)
@@ -40,12 +41,12 @@ clearinbox-ai/
 ## Architecture
 
 ### Email Fetch Pipeline (service-worker.js)
-1. Two-pass fetch: 30 from `category:primary` + 15 from promotions/updates/social
+1. Two-pass fetch: up to 50 from `category:primary is:important newer_than:5d` + 20 from promotions/updates/social (for Unsub tab)
 2. Deduplicate by message ID
 3. Pre-classify Gmail Promotions/Social as "newsletter" locally (no API call)
-4. Batch classify remaining emails with Gemini (10 per prompt)
+4. Batch classify remaining emails with Gemini (**15 per prompt**, was 10)
 5. Generate AI summary digest (1 Gemini call)
-6. Detect unsubscribe links + scan for subscriptions
+6. Detect unsubscribe links + scan for job application emails
 7. Cache everything to chrome.storage.local
 
 ### Classification Categories (strict decision tree)
@@ -55,12 +56,26 @@ clearinbox-ai/
 - **needs_reply** → real humans asking questions personally
 - **fyi** → everything else
 
-### API Budget (~3 calls per refresh)
+### Job Application Detection (job-tracker.js)
+- Zero API calls — local pattern matching on subject + snippet
+- Detects: offered, interview, screening, applied, rejected
+- Also recognizes sender domains: greenhouse.io, lever.co, workday.com, linkedin.com, ashbyhq.com, etc.
+- Deduplicates by company, keeps highest-status entry per company
+- Job emails are excluded from the Inbox tab and shown only in the Jobs tab
+
+### API Budget (~5 calls per refresh)
 - Pre-classified promos: 0 calls
-- Classification batches: ~2 calls
+- Classification batches: ~4 calls (15 emails/batch, ~55 uncached emails)
 - AI summary: 1 call
-- Daily budget guard: stops at 18 calls/day
+- Daily budget guard: stops at 18 calls/day (real free tier limit: 20 RPD)
 - Background refresh: every 3 hours
+
+## UI Features (4 tabs)
+- **Digest tab** (default) — AI-generated summary (5-8 bullets, up to 300 words) + stats breakdown
+- **Inbox tab** — All non-newsletter/spam emails sorted by AI importance score; job emails excluded
+- **Unsub tab** — Deduplicated senders with unsubscribe confirmation flow (Yes/No after clicking)
+- **Jobs tab** — Job application tracker: detected applied/screening/interview/rejected/offered per company
+- **Expandable cards** — Click any email card to see AI summary + "Open in Gmail" link
 
 ## Setup & Running
 
@@ -94,14 +109,6 @@ Open `manifest.json` and replace the client_id value with your actual client ID.
 ### Step 5: Use it
 Click the extension icon in Chrome toolbar → **Sign in with Google** → hit the refresh button to fetch and classify emails.
 
-## UI Features
-- **Digest tab** (default) — AI-generated summary bullets + stats breakdown
-- **Priority tab** — Only urgent + needs_reply emails, sorted by importance
-- **All tab** — Grouped by category, repeated senders stacked/collapsible
-- **Unsub tab** — Deduplicated senders with unsubscribe confirmation flow (Yes/No after clicking)
-- **Costs tab** — Detected subscription receipts with monthly cost estimate
-- **Expandable cards** — Click any email card to see AI summary + "Open in Gmail" link
-
 ## Conventions
 - Vanilla JS, ES modules, no frameworks
 - No build tools or bundlers
@@ -109,4 +116,5 @@ Click the extension icon in Chrome toolbar → **Sign in with Google** → hit t
 - Only `gmail.readonly` scope — no write access
 - Static imports only in service worker (no dynamic import())
 - Pre-classify obvious promotions locally to save API budget
-- Batch 10 emails per AI prompt
+- Batch 15 emails per AI prompt
+- No inline event handlers in HTML (CSP violation in MV3) — use event delegation in JS

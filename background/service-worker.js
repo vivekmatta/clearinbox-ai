@@ -5,6 +5,7 @@ import { listMessages, getMessages } from '../lib/gmail-api.js';
 import { classifyEmails, generateSummary } from '../lib/classifier.js';
 import { detectUnsubscribe } from '../lib/unsubscribe-detector.js';
 import { scanSubscriptions } from '../lib/subscription-scanner.js';
+import { scanJobs } from '../lib/job-tracker.js';
 
 // Handle messages from popup/options
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -81,11 +82,11 @@ async function fetchAndClassifyEmails() {
 
   // Two-pass fetch: primary inbox + sample of promotions for Unsub/Costs
   const primaryIds = await listMessages(token, {
-    maxResults: 30,
-    query: 'category:primary newer_than:3d'
+    maxResults: 50,
+    query: 'category:primary is:important newer_than:5d'
   });
   const promoIds = await listMessages(token, {
-    maxResults: 15,
+    maxResults: 20,
     query: '(category:promotions OR category:updates OR category:social) newer_than:3d'
   });
 
@@ -100,7 +101,7 @@ async function fetchAndClassifyEmails() {
   }
 
   if (!allIds.length) {
-    return { emails: [], classifications: {}, unsubscribe: {}, subscriptions: [], aiSummary: null };
+    return { emails: [], classifications: {}, unsubscribe: {}, subscriptions: [], jobs: [], aiSummary: null };
   }
 
   // Batch get all message details
@@ -173,6 +174,9 @@ async function fetchAndClassifyEmails() {
   // Scan for subscriptions/receipts
   const subscriptions = scanSubscriptions(emails);
 
+  // Scan for job application emails
+  const jobs = scanJobs(emails);
+
   // Store results for popup
   await storage.set('lastFetch', {
     timestamp: Date.now(),
@@ -180,10 +184,11 @@ async function fetchAndClassifyEmails() {
     classifications,
     unsubscribe,
     subscriptions,
+    jobs,
     aiSummary
   });
 
-  return { emails, classifications, unsubscribe, subscriptions, aiSummary };
+  return { emails, classifications, unsubscribe, subscriptions, jobs, aiSummary };
 }
 
 // Set up hourly alarm for background refresh
